@@ -3,9 +3,11 @@
   import InfoInput from './InfoInput.svelte';
   import InfoConfirm from './InfoConfirm.svelte';
   import MainPage from './MainPage.svelte';
-
+  
   let currentPage = 'welcome'; // 초기 페이지 설정
   let userInfo = {}; // 사용자 정보 저장
+  let userId = null; // userId 저장
+//  let detailId = null; // userId 저장
 
   // 페이지 전환 함수
   function startInfoInput() {
@@ -14,7 +16,6 @@
 
   function finishInfoInput(event) {
     userInfo = event.detail; // 이벤트에서 전달된 사용자 데이터 저장
-    saveUserData(userInfo); // API를 통해 사용자 데이터 저장
     currentPage = 'infoConfirm';
   }
 
@@ -28,25 +29,12 @@
     currentPage = 'welcome';
   }
 
-  function goToMainPage() {
+  function goToMainPage(event) {
+    userId = event.detail.userId;
+    console.log('User ID set to:', userId); // 디버그용 로그 추가
     currentPage = 'mainPage';
   }
 
-  // 사용자 데이터를 API로 저장
-  async function saveUserData(data) {
-    try {
-      const response = await fetch('/api/save_user_data', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) {
-        console.error('Failed to save user data');
-      }
-    } catch (error) {
-      console.error('Error saving user data:', error);
-    }
-  }
 </script>
 
 <main>
@@ -57,7 +45,7 @@
   {:else if currentPage === 'infoConfirm'}
     <InfoConfirm {userInfo} on:back={goBack} on:confirm={goToMainPage} />
   {:else if currentPage === 'mainPage'}
-    <MainPage />
+    <MainPage {userId} />
   {/if}
 </main>
 

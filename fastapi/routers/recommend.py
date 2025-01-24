@@ -1,5 +1,3 @@
-#이거 일단 스킵하자
-
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -77,7 +75,6 @@ except FileNotFoundError:
 except Exception as e:
     print(f"An error occurred while loading the model: {e}")
 
-
 router = APIRouter()
 
 def get_db():
@@ -87,38 +84,45 @@ def get_db():
     finally:
         db.close()
 
-@router.get("/api/recommendations")
+@router.get("/api/recommendations/{user_id}")
 async def get_recommendations(user_id: int, db: Session = Depends(get_db)):
+    print(f"get_recommendations called with user_id: {user_id}")
+    # if user_id == 0:
+    #     print("Invalid user_id: 0")
+    #     return JSONResponse({"error": "Invalid user_id"}, status_code=400)
     # 사용자 데이터 조회
     user = db.query(User).filter(User.user_id == user_id).first()
     detail = db.query(Detail).filter(Detail.user_id == user_id).first()
 
     if not user or not detail:
+        print(f"User or Detail not found for user_id: {user_id}")
         return JSONResponse({"error": "User or Detail not found"}, status_code=404)
 
-    ## 위 DB에서 받은 데이터 형식은 아래와 같아야함 ##
-    tmdrbs = {
-        'Name' : '박승균', 
-        'Age': 67,
-        'Gender' : 1,
-        'Height' : 172,
-        'Weight' : 92,
-        'Alco' : 1,
-        'Smoke' : 1,
-        'Sleep Duration': 7.0,
-        'Tired' : 1,
-        'Systolic': 140,
-        'Diastolic': 91,
-        'Daily Steps': 8000,
-        'Col': 1           # 콜레스테롤 수치 여부
-    }
+    print(f"User and Detail found for user_id: {user_id}")
 
-    tmdrbs_pd = pd.DataFrame([tmdrbs])
-    print(tmdrbs_pd)
+    user_data = {
+        'Name': user.name,
+        'Age': user.age,
+        'Gender': int(user.gender),
+        'Height': user.height,
+        'Weight': user.weight,
+        'Alco': int(user.drinking_status),
+        'Smoke': int(user.smoking_status),
+        'Sleep Duration': detail.daily_sleep,
+        'Tired': int(user.fatigue_status),
+        'Systolic': detail.systolic_bp,
+        'Diastolic': detail.diastolic_bp,
+        'Daily Steps': detail.daily_steps,
+        'Col': int(detail.cholesterol_status)
+    }
+    user_df = pd.DataFrame([user_data])
+    print(user_df)
+
+    print("User data prepared for prediction:", user_data)
 
     # 'BMI Encoded' 열 추가해서 새로운 데이터 프레임에 저장
     # 'Hyper' 열 추가해서 새로운 데이터 프레임에 저장
-    tmdrbs_pd_f = tmdrbs_pd.copy()
+    tmdrbs_pd_f = user_df.copy()
     tmdrbs_pd_f['BMI Encoded'] = tmdrbs_pd_f.apply(lambda row: calculate_bmi_category(row['Height'], row['Weight']), axis=1)
     tmdrbs_pd_f['Hyper'] = tmdrbs_pd_f.apply(lambda row: calculate_hypertension(row['Systolic'], row['Diastolic']), axis=1)
             
@@ -167,7 +171,7 @@ async def get_recommendations(user_id: int, db: Session = Depends(get_db)):
     ################ 간암 위험군 분류 예측 모델 ############################
     try:
         liver_predictions = loaded_Liver_RF.predict(tmdrbs_liver)
-        if cardio_predictions == 1:
+        if liver_predictions == 1:
             print('간암 위험군입니다.')
         else:
             print('간암 위험군이 아닙니다.')
@@ -206,4 +210,6 @@ async def get_recommendations(user_id: int, db: Session = Depends(get_db)):
 
     # 추천 비디오 생성
     recommendations = recommend_videos(categories)
-    return JSONResponse({"recommendations": recommendations})
+    print("Recommendations generated:", recommendations)
+    print("Categories generated:", categories)  # 디버그용 로그 추가
+    return JSONResponse({"recommendations": recommendations, "categories": categories})

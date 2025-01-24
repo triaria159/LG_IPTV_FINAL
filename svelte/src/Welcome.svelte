@@ -5,7 +5,7 @@
 	// 이벤트 디스패처 생성 (부모 컴포넌트와의 통신을 위함)
 	const dispatch = createEventDispatcher();
 	// 출력할 전체 텍스트
-	let text = "노인을 위한 나라에 오신 것을 환영합니다";
+	let text = "Fit For You에 오신 것을 환영합니다";
 	// 현재까지 표시된 텍스트를 저장할 변수
 	let displayText = "";
 	// 현재 출력 중인 글자의 인덱스
@@ -41,7 +41,7 @@
 		<!-- 타이핑 효과와 커서를 포함한 제목 -->
 		<h1 class="fade-in">{displayText}{#if showingCursor}<span class="cursor">_</span>{/if}</h1>
 		<!-- 메인 이미지 -->
-		<img src="main_page.png" alt="건강 관리 아이콘" class="welcome-image fade-in">
+		<img src="static/main_page.png" alt="건강 관리 아이콘" class="welcome-image fade-in">
 		<!-- 시작하기 버튼 -->
 		<button on:click={handleStart}>시작하기</button>
 	</div>

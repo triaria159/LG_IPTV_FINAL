@@ -1,66 +1,131 @@
 <script>
   import { onMount } from 'svelte';
-
-  const API_KEY = 'AIzaSyA8jsudsy9m8m6FxHhlWjsWoOakvY_-yZU';
-  const categories = [
-    "60대노인건강 관절",
-    "60대노인건강 고혈압",
-    "60대노인건강 감기",
-    "60대노인건강 뇌졸중",
-    "60대노인건강 당뇨"
-  ];
-
+  let recommendations = []; // Recommendations 전달 받음
+  let categories = [];  // Recommendations 기반으로 생성
+  export let userId = null;
   let videos = {};
   let pageTokens = {};
-  let selectedCategory = categories[0];
+  let selectedCategory = null;
   let selectedVideo = null;
   let showModal = false;
   let selectedIndex = 0;
   let focusArea = 'category';
   let scrollContainer;
   let isLoadingMore = false;
-  
+
+  // Recommendations에서 categories 추출
+  // 카테고리 기반 영상 로드
+  onMount(async () => {
+    console.log('onMount called with userId:', userId);
+    if (userId === null) {
+      console.error('User ID is null');
+      return;
+    }
+    try {
+      console.log('Fetching recommendations for userId:', userId);
+      // 추천 데이터 요청
+      const recommendResponse = await fetch(`/api/recommendations/${userId}`);
+      if (!recommendResponse.ok) {
+        console.error('Failed to fetch recommendations:', recommendResponse.statusText);
+        return;
+      }
+
+      const recommendResult = await recommendResponse.json();
+      console.log('Recommendations fetched:', recommendResult);
+      recommendations = Array.isArray(recommendResult.recommendations) ? recommendResult.recommendations : [];
+      categories = Array.isArray(recommendResult.categories) ? recommendResult.categories : [];
+      console.log('Categories:', categories); // 디버그용 로그 추가
+
+      // 카테고리 추출 및 초기화
+      if (categories.length > 0) {
+        selectedCategory = categories[0];
+        await loadVideosForCategory(selectedCategory);
+      }
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+    }
+  });
+
   async function fetchVideos(category, pageToken = '') {
     try {
-      const response = await fetch(
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=8&q=${encodeURIComponent(category)}&type=video&key=${API_KEY}${pageToken ? `&pageToken=${pageToken}` : ''}`
-      );
+      const response = await fetch(`/api/videos/search/${category}${pageToken ? `?pageToken=${pageToken}` : ''}&regionCode=KR`);
       const data = await response.json();
-      pageTokens[category] = data.nextPageToken;
-      return data.items;
+      pageTokens[category] = data.nextPageToken || null;
+      return data.videos.map(video => ({
+        id: { videoId: video.id.videoId },
+        snippet: {
+          title: video.snippet.title,
+          thumbnails: { high: { url: video.snippet.thumbnails.high.url } },
+          duration: video.contentDetails ? video.contentDetails.duration : 0,
+        },
+      }));
     } catch (error) {
-      console.error('Error fetching videos:', error);
+      console.error(`Error fetching videos for category "${category}":`, error);
       return [];
+    }
+  }
+
+  async function loadVideosForCategory(category) {
+    if (!videos[category]) {
+      videos[category] = await fetchVideos(category);
     }
   }
 
   async function loadMoreVideos() {
     if (isLoadingMore || !pageTokens[selectedCategory]) return;
-    
+
     isLoadingMore = true;
     const newVideos = await fetchVideos(selectedCategory, pageTokens[selectedCategory]);
     if (newVideos.length > 0) {
       videos[selectedCategory] = [...videos[selectedCategory], ...newVideos];
-      videos = {...videos};
+      videos = { ...videos };
     }
     isLoadingMore = false;
   }
 
   function selectCategory(category) {
     selectedCategory = category;
-    selectedIndex = 0;
-    focusArea = 'video';
     if (!videos[category]) {
-      fetchVideos(category).then(result => {
-        videos[category] = result;
-        videos = {...videos};
-      });
+      loadVideosForCategory(category);
     }
   }
 
   function openVideo(video) {
     selectedVideo = video;
+    //saveVideo(video, userId);
     showModal = true;
+  }
+
+  async function saveVideo(video, userId) {
+    try {
+      const response = await fetch(`/api/videos/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          user_id: userId, // 전달받은 userId 활용
+          video_id: video.id.videoId,
+          title: video.snippet.title,
+          video_length: video.duration, // 영상 길이
+          category: selectedCategory,
+        }),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to save video:', await response.text());
+        return;
+      }
+      console.log('Video saved successfully');
+    } catch (error) {
+      console.error('Error saving video:', error);
+    }
+  }
+
+  function parseDuration(duration) {
+    if (!duration) return '';
+    const hours = Math.floor(duration / 3600);
+    const minutes = Math.floor((duration % 3600) / 60);
+    const seconds = duration % 60;
+    return `${hours > 0 ? hours + '시간 ' : ''}${minutes}분 ${seconds}초`;
   }
 
   function closeModal() {
@@ -75,7 +140,7 @@
         const containerWidth = scrollContainer.offsetWidth;
         const cardLeft = selectedCard.offsetLeft;
         const cardWidth = selectedCard.offsetWidth;
-        
+
         const scrollPosition = cardLeft - (containerWidth / 2) + (cardWidth / 2);
         scrollContainer.scrollTo({
           left: scrollPosition,
@@ -91,10 +156,10 @@
       return;
     }
 
-    const currentVideos = videos[selectedCategory] || [];
+    const currentVideos = Array.isArray(videos[selectedCategory]) ? videos[selectedCategory] : [];
     const categoryIndex = categories.indexOf(selectedCategory);
     const maxIndex = currentVideos.length + (pageTokens[selectedCategory] ? 1 : 0);
-    
+
     switch(event.key) {
       case 'ArrowUp':
         event.preventDefault();
@@ -157,10 +222,6 @@
     }
   }
 
-  onMount(async () => {
-    videos[selectedCategory] = await fetchVideos(selectedCategory);
-    videos = {...videos};
-  });
 </script>
 
 <svelte:window on:keydown={handleKeydown}/>
@@ -169,13 +230,13 @@
   <header>
     <h1>맞춤 건강 정보</h1>
     <div class="category-buttons">
-      {#each categories as category}
+      {#each categories as category, index}
         <button 
           class="category-button" 
           class:selected={selectedCategory === category && focusArea === 'category'}
           on:click={() => selectCategory(category)}
         >
-          {category.replace('60대노인건강 ', '')}
+          {category || ''}
         </button>
       {/each}
     </div>
@@ -184,63 +245,53 @@
   <section class="video-section">
     <div class="video-scroll" bind:this={scrollContainer}>
       <div class="video-container">
-        {#if videos[selectedCategory]}
-          {#each videos[selectedCategory] as video, index}
-            <div 
-              class="video-card" 
-              class:selected={index === selectedIndex && focusArea === 'video'}
-              on:click={() => openVideo(video)}
-            >
-              <div class="thumbnail-wrapper">
-                <img 
-                  src={video.snippet.thumbnails.high.url} 
-                  alt={video.snippet.title}
-                  class="thumbnail"
-                />
-                <div class="play-overlay">
-                  <div class="play-button">▶</div>
-                </div>
-              </div>
-              <div class="video-info">
-                <h3 class="video-title">{video.snippet.title}</h3>
-                <p class="channel-title">{video.snippet.channelTitle}</p>
+        {#each Array.isArray(videos[selectedCategory]) ? videos[selectedCategory] : [] as video}
+          <div 
+            class="video-card" 
+            on:click={() => openVideo(video)}
+          >
+            <div class="thumbnail-wrapper">
+              <img 
+                src={video.snippet.thumbnails.high.url} 
+                alt={video.snippet.title}
+                class="thumbnail"
+              />
+              <div class="play-overlay">
+                <div class="play-button">▶</div>
               </div>
             </div>
-          {/each}
-          {#if pageTokens[selectedCategory]}
-            <button 
-              class="load-more-button"
-              class:selected={selectedIndex === videos[selectedCategory].length && focusArea === 'video'}
-              on:click={loadMoreVideos}
-              disabled={isLoadingMore}
-            >
-              {isLoadingMore ? '로딩 중...' : '더 보기'}
-            </button>
-          {/if}
-        {:else}
-          <div class="loading">영상을 불러오는 중입니다...</div>
+            <div class="video-info">
+              <h3 class="video-title">{video.snippet.title}</h3>
+              <p class="channel-title">{parseDuration(video.duration)}</p>
+            </div>
+          </div>
+        {/each}
+        {#if pageTokens[selectedCategory]}
+          <button 
+            class="load-more-button"
+            on:click={loadMoreVideos}
+            disabled={isLoadingMore}
+          >
+            {isLoadingMore ? '로딩 중...' : '더 보기'}
+          </button>
         {/if}
       </div>
     </div>
   </section>
-</div>
 
-{#if showModal}
-  <div class="modal-overlay" on:click={closeModal}>
-    <div class="modal-content" on:click|stopPropagation>
-      <button class="close-button" on:click={closeModal}>×</button>
-      <div class="modal-video-wrapper">
+  {#if showModal}
+    <div class="modal-overlay" on:click={closeModal}>
+      <div class="modal-content" on:click|stopPropagation>
+        <button class="close-button" on:click={closeModal}>×</button>
         <iframe
           src="https://www.youtube.com/embed/{selectedVideo.id.videoId}?autoplay=1"
           title={selectedVideo.snippet.title}
-          frameborder="0"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowfullscreen
         ></iframe>
       </div>
     </div>
-  </div>
-{/if}
+  {/if}
+</div>
 
 <style>
   /* 페이지 컨테이너 스타일 */

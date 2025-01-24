@@ -12,7 +12,7 @@ CATEGORY_KEYWORDS = {
     "스트레스 관리": ["스트레스 관리"],
     "영양 보충제": ["영양 보충제"],
     "정기 검진 중요성": ["정기 검진 중요성"]   
-}
+} 
 
 YOUTUBE_SEARCH_KEYWORDS = {
     "수면 건강": ["수면장애, 예방, 관리"],
@@ -32,7 +32,7 @@ def recommend_videos(categories):
     # 사용자 카테고리에 따라 키워드 생성
     keywords = []
     for category in categories:
-        if category in CATEGORY_KEYWORDS and len(keywords) <= 5:
+        if category in CATEGORY_KEYWORDS:
             keywords.extend(CATEGORY_KEYWORDS[category])
 
     search_keywords = []
@@ -41,20 +41,23 @@ def recommend_videos(categories):
             search_keywords.extend(YOUTUBE_SEARCH_KEYWORDS[keyword])
 
     # YouTube 검색 및 유사도 계산
-    search_results = search_youtube_videos(search_keywords)
-    video_ids = [item["id"]["videoId"] for item in search_results]
-    video_details = get_video_details(video_ids)
+    search_results, _ = search_youtube_videos(search_keywords)
+    video_ids = [item["id"]["videoId"] for item in search_results if "id" in item and "videoId" in item["id"]]
+    video_details = [get_video_details(video_id) for video_id in video_ids]
 
-    texts = [video["snippet"]["title"] + " " + video["snippet"]["description"] for video in video_details]
+    texts = [video["title"] for video in video_details if video]
     tfidf_scores = calculate_similarity_tfidf(texts, search_keywords)
     nlp_scores = calculate_similarity_nlp(texts, search_keywords)
 
     # 점수 계산 및 정렬
     recommendations = []
     for i, video in enumerate(video_details):
-        recommendations.append({
-            "title": video["snippet"]["title"],
-            "link": f"https://www.youtube.com/watch?v={video['id']}",
-            "score": 0.5 * tfidf_scores[i] + 0.5 * nlp_scores[i]
-        })
+        if video:
+            recommendations.append({
+                "title": video["title"],
+                "thumbnail": video["thumbnail"],
+                "duration": video["duration"],
+                "link": f"https://www.youtube.com/watch?v={video['videoId']}",
+                "score": 0.5 * tfidf_scores[i] + 0.5 * nlp_scores[i]
+            })
     return sorted(recommendations, key=lambda x: x["score"], reverse=True)
